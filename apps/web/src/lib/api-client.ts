@@ -88,6 +88,7 @@ export interface RunDetail {
   latencyMs: number | null;
   estimatedCostUsd: number | null;
   providerMetrics: Record<string, number> | null;
+  raw: unknown;
   error: { name: string; message: string } | null;
   startedAt: string | null;
   finishedAt: string | null;
@@ -122,6 +123,8 @@ export const api = {
   experiment: (id: string) => request<ExperimentDetail>(`/experiments/${id}`),
   startExperiment: (spec: ExperimentSpec) =>
     request<ExperimentDetail>("/experiments", { method: "POST", body: JSON.stringify(spec) }),
+  rerunExperiment: (id: string) =>
+    request<ExperimentDetail>(`/experiments/${id}/rerun`, { method: "POST" }),
 
   createPrompt: (name: string) =>
     request<{ id: string; name: string }>("/prompts", {

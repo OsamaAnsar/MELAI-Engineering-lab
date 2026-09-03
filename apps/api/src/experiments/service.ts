@@ -263,6 +263,7 @@ export async function getExperiment(deps: ExperimentDeps, id: string) {
           rawMeta && typeof rawMeta === "object" && "providerMetrics" in rawMeta
             ? rawMeta.providerMetrics
             : null,
+        raw: rawMeta && typeof rawMeta === "object" && "raw" in rawMeta ? rawMeta.raw : null,
         error: run.error,
         startedAt: run.startedAt,
         finishedAt: run.finishedAt,

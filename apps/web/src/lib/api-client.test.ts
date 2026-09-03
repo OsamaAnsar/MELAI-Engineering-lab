@@ -38,6 +38,13 @@ describe("api client", () => {
     await expect(api.experiments()).rejects.toBeInstanceOf(ApiError);
   });
 
+  test("rerunExperiment POSTs to /experiments/:id/rerun", async () => {
+    const spy = mockFetch({ id: "exp2", runs: [] }, { status: 202 });
+    await api.rerunExperiment("exp1");
+    expect(String(spy.mock.calls[0]![0])).toMatch(/\/experiments\/exp1\/rerun$/);
+    expect(spy.mock.calls[0]![1]).toMatchObject({ method: "POST" });
+  });
+
   test("startExperiment POSTs the spec as JSON to /experiments", async () => {
     const spy = mockFetch({ id: "exp1", runs: [] }, { status: 202 });
     const spec = {
