@@ -15,7 +15,11 @@ export function createDatabase(
   connectionString: string,
   options?: { max?: number },
 ): DatabaseHandle {
-  const client = postgres(connectionString, { max: options?.max ?? 10 });
+  const client = postgres(connectionString, {
+    max: options?.max ?? 10,
+    // Keeps this compatible with the PGlite-over-socket dev DB; harmless on real Postgres.
+    prepare: false,
+  });
   return {
     db: drizzle(client, { schema }),
     close: () => client.end(),

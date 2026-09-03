@@ -12,6 +12,9 @@ build/
 # turbo
 .turbo/
 
+# local dev database (PGlite)
+.pglite/
+
 # test / coverage
 coverage/
 

@@ -76,4 +76,19 @@ export const seedProviders: SeedProvider[] = [
       },
     ],
   },
+  {
+    name: "mock",
+    kind: "cloud",
+    config: {},
+    models: [
+      {
+        name: "mock-echo",
+        displayName: "Mock (echo)",
+        contextLength: 8_192,
+        inputPricePerMtok: "1.000000",
+        outputPricePerMtok: "3.000000",
+        cachedInputPricePerMtok: null,
+      },
+    ],
+  },
 ];

@@ -1,10 +1,14 @@
 import { createDatabase } from "./client.js";
 import { getDatabaseUrl } from "./env.js";
+import { createPgliteDatabase } from "./pglite.js";
 import { models, providers } from "./schema.js";
 import { seedProviders } from "./seed-data.js";
 
 async function seed(): Promise<void> {
-  const { db, close } = createDatabase(getDatabaseUrl(), { max: 1 });
+  const { db, close } =
+    process.env.DB_DRIVER === "pglite"
+      ? await createPgliteDatabase()
+      : createDatabase(getDatabaseUrl(), { max: 1 });
 
   try {
     for (const p of seedProviders) {

@@ -2,6 +2,7 @@ export const PACKAGE_NAME = "@melai/database";
 
 export { getDatabaseUrl } from "./env.js";
 export { createDatabase, type Database, type DatabaseHandle } from "./client.js";
+export { createPgliteDatabase } from "./pglite.js";
 export {
   schema,
   providers,

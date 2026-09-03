@@ -9,6 +9,7 @@ const optional = <T extends z.ZodTypeAny>(schema: T) =>
 
 const EnvSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(4000),
+  DB_DRIVER: z.enum(["postgres", "pglite"]).default("postgres"),
   DATABASE_URL: optional(z.string().url()),
   ANTHROPIC_API_KEY: optional(z.string().min(1)),
   OPENAI_API_KEY: optional(z.string().min(1)),
