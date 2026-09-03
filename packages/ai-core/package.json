@@ -11,10 +11,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "eslint src scripts",
-    "smoke:anthropic": "tsx --env-file-if-exists=../../.env scripts/smoke-anthropic.ts"
+    "smoke:anthropic": "tsx --env-file-if-exists=../../.env scripts/smoke-anthropic.ts",
+    "smoke:openai": "tsx --env-file-if-exists=../../.env scripts/smoke-openai.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.123.0"
+    "@anthropic-ai/sdk": "^0.123.0",
+    "openai": "^7.9.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
