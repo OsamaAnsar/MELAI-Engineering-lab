@@ -27,12 +27,12 @@ export function stubFetch(routes: StubRoute[]): typeof fetch {
   return impl as typeof fetch;
 }
 
-/** A `fetch` that streams a fixed Server-Sent Events body. */
-export function stubStreamFetch(sseBody: string): typeof fetch {
+/**
+ * A `fetch` that streams a fixed body — SSE by default, or another content type
+ * (e.g. `application/x-ndjson` for Ollama).
+ */
+export function stubStreamFetch(body: string, contentType = "text/event-stream"): typeof fetch {
   const impl = async (): Promise<Response> =>
-    new Response(sseBody, {
-      status: 200,
-      headers: { "content-type": "text/event-stream" },
-    });
+    new Response(body, { status: 200, headers: { "content-type": contentType } });
   return impl as typeof fetch;
 }

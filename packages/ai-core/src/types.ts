@@ -48,6 +48,11 @@ export interface GenerationResult {
   /** Filled by a cost calculator from `usage` + a pricing table, never by the adapter. */
   estimatedCostUsd?: number;
   finishReason?: FinishReason;
+  /**
+   * Provider-specific numeric telemetry that doesn't fit the normalized fields —
+   * e.g. a local model's tokens/sec and load time. Cloud adapters leave it unset.
+   */
+  providerMetrics?: Record<string, number>;
   /** Untouched provider payload, for the Observability Lab to inspect. */
   raw?: Record<string, unknown>;
 }
