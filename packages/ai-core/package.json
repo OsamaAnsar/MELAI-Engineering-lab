@@ -4,15 +4,22 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./providers": "./src/providers/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "eslint src"
+    "lint": "eslint src scripts",
+    "smoke:anthropic": "tsx --env-file-if-exists=../../.env scripts/smoke-anthropic.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.123.0"
   },
   "devDependencies": {
+    "@types/node": "^22.10.2",
     "eslint": "^9.17.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }
