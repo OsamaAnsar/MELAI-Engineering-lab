@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: melai-postgres
+    environment:
+      POSTGRES_USER: melai
+      POSTGRES_PASSWORD: melai
+      POSTGRES_DB: melai
+    ports:
+      - "5432:5432"
+    volumes:
+      - melai-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U melai -d melai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  melai-pgdata:

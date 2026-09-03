@@ -1,15 +1,17 @@
-import { z } from "zod";
-
 export const PACKAGE_NAME = "@melai/database";
 
-const DatabaseUrlSchema = z
-  .string()
-  .url()
-  .refine((u) => u.startsWith("postgres://") || u.startsWith("postgresql://"), {
-    message: "DATABASE_URL must be a postgres:// connection string",
-  });
-
-/** Reads and validates DATABASE_URL. The Drizzle client + schema land in Milestone 1, task 2. */
-export function getDatabaseUrl(source: NodeJS.ProcessEnv = process.env): string {
-  return DatabaseUrlSchema.parse(source.DATABASE_URL);
-}
+export { getDatabaseUrl } from "./env.js";
+export { createDatabase, type Database, type DatabaseHandle } from "./client.js";
+export {
+  schema,
+  providers,
+  models,
+  prompts,
+  promptVersions,
+  experiments,
+  experimentRuns,
+  providerKind,
+  runStatus,
+  type RunRequestSnapshot,
+  type RunError,
+} from "./schema.js";

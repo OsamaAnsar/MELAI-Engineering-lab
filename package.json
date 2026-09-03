@@ -16,6 +16,11 @@
     "lint": "turbo run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:generate": "pnpm --filter @melai/database db:generate",
+    "db:migrate": "pnpm --filter @melai/database db:migrate",
+    "db:seed": "pnpm --filter @melai/database db:seed",
     "prepare": "husky"
   },
   "devDependencies": {
