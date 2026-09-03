@@ -11,3 +11,13 @@ export type {
   ModelProvider,
   ModelPricing,
 } from "./types.js";
+
+export {
+  estimateCost,
+  formatUsd,
+  parseModelPricing,
+  COST_PRECISION,
+  type RawPricing,
+} from "./cost.js";
+
+export { MockProvider, type MockProviderOptions } from "./mock-provider.js";
