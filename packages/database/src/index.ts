@@ -15,3 +15,5 @@ export {
   type RunRequestSnapshot,
   type RunError,
 } from "./schema.js";
+
+export { eq, and, or, desc, asc, sql, inArray } from "drizzle-orm";

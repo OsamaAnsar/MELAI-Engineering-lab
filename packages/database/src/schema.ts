@@ -1,3 +1,4 @@
+import { relations } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -122,6 +123,40 @@ export const experimentRuns = pgTable(
   (t) => [index("experiment_runs_experiment_id_idx").on(t.experimentId)],
 );
 
+export const providersRelations = relations(providers, ({ many }) => ({
+  models: many(models),
+}));
+
+export const modelsRelations = relations(models, ({ one, many }) => ({
+  provider: one(providers, { fields: [models.providerId], references: [providers.id] }),
+  runs: many(experimentRuns),
+}));
+
+export const promptsRelations = relations(prompts, ({ many }) => ({
+  versions: many(promptVersions),
+}));
+
+export const promptVersionsRelations = relations(promptVersions, ({ one, many }) => ({
+  prompt: one(prompts, { fields: [promptVersions.promptId], references: [prompts.id] }),
+  experiments: many(experiments),
+}));
+
+export const experimentsRelations = relations(experiments, ({ one, many }) => ({
+  promptVersion: one(promptVersions, {
+    fields: [experiments.promptVersionId],
+    references: [promptVersions.id],
+  }),
+  runs: many(experimentRuns),
+}));
+
+export const experimentRunsRelations = relations(experimentRuns, ({ one }) => ({
+  experiment: one(experiments, {
+    fields: [experimentRuns.experimentId],
+    references: [experiments.id],
+  }),
+  model: one(models, { fields: [experimentRuns.modelId], references: [models.id] }),
+}));
+
 export const schema = {
   providers,
   models,
@@ -129,4 +164,10 @@ export const schema = {
   promptVersions,
   experiments,
   experimentRuns,
+  providersRelations,
+  modelsRelations,
+  promptsRelations,
+  promptVersionsRelations,
+  experimentsRelations,
+  experimentRunsRelations,
 };

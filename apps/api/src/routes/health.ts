@@ -1,13 +1,24 @@
 import type { FastifyPluginAsync } from "fastify";
-import { PACKAGE_NAME as AI_CORE } from "@melai/ai-core";
+import { sql } from "@melai/database";
+import type { ExperimentDeps } from "../experiments/service.js";
 
-export const healthRoutes: FastifyPluginAsync = async (app) => {
-  app.get("/health", async () => {
-    return {
-      status: "ok" as const,
-      service: "@melai/api",
-      deps: { aiCore: AI_CORE },
-      time: new Date().toISOString(),
-    };
-  });
-};
+export function healthRoutes(deps: Pick<ExperimentDeps, "db">): FastifyPluginAsync {
+  return async (app) => {
+    app.get("/health", async () => {
+      let db = false;
+      try {
+        await deps.db.execute(sql`select 1`);
+        db = true;
+      } catch {
+        db = false;
+      }
+
+      return {
+        status: db ? ("ok" as const) : ("degraded" as const),
+        service: "@melai/api",
+        checks: { db },
+        time: new Date().toISOString(),
+      };
+    });
+  };
+}
