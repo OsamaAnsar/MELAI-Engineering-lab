@@ -1,6 +1,5 @@
 import { estimateCost, parseModelPricing, type ChatMessage } from "@melai/ai-core";
 import {
-  and,
   desc,
   eq,
   experimentRuns,
@@ -13,11 +12,13 @@ import {
   type RunRequestSnapshot,
 } from "@melai/database";
 import { resolveTemplate, MissingTemplateVariableError, type ExperimentSpec } from "@melai/shared";
+import type { ExperimentEvents } from "./events.js";
 import type { ProviderRegistry } from "../providers.js";
 
 export interface ExperimentDeps {
   db: Database;
   registry: ProviderRegistry;
+  events: ExperimentEvents;
 }
 
 export class NotFoundError extends Error {
@@ -36,8 +37,15 @@ export class BadRequestError extends Error {
 
 type ModelRow = typeof models.$inferSelect & { providerName: string };
 
+export interface RunPlan {
+  experimentId: string;
+  messages: ChatMessage[];
+  config: ExperimentSpec["config"];
+  runs: { runId: string; model: ModelRow }[];
+}
+
 async function loadModels(db: Database, ids: string[]): Promise<ModelRow[]> {
-  const rows = await db
+  return db
     .select({
       id: models.id,
       providerId: models.providerId,
@@ -54,7 +62,6 @@ async function loadModels(db: Database, ids: string[]): Promise<ModelRow[]> {
     .from(models)
     .innerJoin(providers, eq(models.providerId, providers.id))
     .where(inArray(models.id, ids));
-  return rows;
 }
 
 async function buildMessages(
@@ -70,20 +77,21 @@ async function buildMessages(
   try {
     return [{ role: "user", content: resolveTemplate(pv.template, inputVariables) }];
   } catch (err) {
-    if (err instanceof MissingTemplateVariableError) {
-      throw new BadRequestError(err.message);
-    }
+    if (err instanceof MissingTemplateVariableError) throw new BadRequestError(err.message);
     throw err;
   }
 }
 
 async function executeRun(
   deps: ExperimentDeps,
+  experimentId: string,
   runId: string,
   model: ModelRow,
   messages: ChatMessage[],
   config: ExperimentSpec["config"],
 ): Promise<void> {
+  deps.events.emit({ type: "run.started", experimentId, runId, modelId: model.id });
+
   const startedAt = new Date();
   const request: RunRequestSnapshot = {
     model: model.name,
@@ -107,6 +115,7 @@ async function executeRun(
         finishedAt: new Date(),
       })
       .where(eq(experimentRuns.id, runId));
+    deps.events.emit({ type: "run.completed", experimentId, runId, status: "error" });
     return;
   }
 
@@ -143,6 +152,7 @@ async function executeRun(
         finishedAt: new Date(),
       })
       .where(eq(experimentRuns.id, runId));
+    deps.events.emit({ type: "run.completed", experimentId, runId, status: "success" });
   } catch (err) {
     const e = err instanceof Error ? err : new Error(String(err));
     await deps.db
@@ -155,20 +165,20 @@ async function executeRun(
         finishedAt: new Date(),
       })
       .where(eq(experimentRuns.id, runId));
+    deps.events.emit({ type: "run.completed", experimentId, runId, status: "error" });
   }
 }
 
-export async function createAndRunExperiment(
+/** Inserts the experiment + one pending run per model. Does NOT execute anything. */
+export async function createExperiment(
   deps: ExperimentDeps,
   spec: ExperimentSpec,
-): Promise<{ id: string }> {
+): Promise<{ id: string; plan: RunPlan }> {
   const messages = await buildMessages(deps.db, spec.promptVersionId, spec.inputVariables);
 
   const modelRows = await loadModels(deps.db, spec.modelIds);
   const missing = spec.modelIds.filter((id) => !modelRows.some((m) => m.id === id));
-  if (missing.length > 0) {
-    throw new BadRequestError(`Unknown model id(s): ${missing.join(", ")}`);
-  }
+  if (missing.length > 0) throw new BadRequestError(`Unknown model id(s): ${missing.join(", ")}`);
 
   const [experiment] = await deps.db
     .insert(experiments)
@@ -186,15 +196,25 @@ export async function createAndRunExperiment(
     .values(modelRows.map((m) => ({ experimentId: experiment.id, modelId: m.id })))
     .returning({ id: experimentRuns.id, modelId: experimentRuns.modelId });
 
-  await Promise.allSettled(
-    runRows.map((run) => {
-      const model = modelRows.find((m) => m.id === run.modelId);
-      if (!model) return Promise.resolve();
-      return executeRun(deps, run.id, model, messages, spec.config);
-    }),
-  );
+  const runs = runRows.flatMap((r) => {
+    const model = modelRows.find((m) => m.id === r.modelId);
+    return model ? [{ runId: r.id, model }] : [];
+  });
 
-  return { id: experiment.id };
+  return {
+    id: experiment.id,
+    plan: { experimentId: experiment.id, messages, config: spec.config, runs },
+  };
+}
+
+/** Executes every run in the plan concurrently, then emits `experiment.done`. */
+export async function runExperiment(deps: ExperimentDeps, plan: RunPlan): Promise<void> {
+  await Promise.allSettled(
+    plan.runs.map((r) =>
+      executeRun(deps, plan.experimentId, r.runId, r.model, plan.messages, plan.config),
+    ),
+  );
+  deps.events.emit({ type: "experiment.done", experimentId: plan.experimentId });
 }
 
 export async function getExperiment(deps: ExperimentDeps, id: string) {
@@ -218,36 +238,37 @@ export async function getExperiment(deps: ExperimentDeps, id: string) {
       version: experiment.promptVersion.version,
       template: experiment.promptVersion.template,
     },
-    runs: experiment.runs.map((run) => ({
-      id: run.id,
-      status: run.status,
-      model: {
-        id: run.model.id,
-        name: run.model.name,
-        displayName: run.model.displayName,
-        provider: run.model.provider.name,
-        providerKind: run.model.provider.kind,
-      },
-      responseText: run.responseText,
-      finishReason: run.finishReason,
-      inputTokens: run.inputTokens,
-      outputTokens: run.outputTokens,
-      cachedTokens: run.cachedTokens,
-      latencyMs: run.latencyMs,
-      // numeric columns come back as strings on postgres-js and as numbers on
-      // pglite — normalize to a number at the API boundary.
-      estimatedCostUsd: run.estimatedCostUsd != null ? Number(run.estimatedCostUsd) : null,
-      pricingSnapshot: run.pricingSnapshot,
-      providerMetrics:
-        run.rawMetadata &&
-        typeof run.rawMetadata === "object" &&
-        "providerMetrics" in run.rawMetadata
-          ? run.rawMetadata.providerMetrics
-          : null,
-      error: run.error,
-      startedAt: run.startedAt,
-      finishedAt: run.finishedAt,
-    })),
+    runs: experiment.runs.map((run) => {
+      const rawMeta = run.rawMetadata;
+      return {
+        id: run.id,
+        status: run.status,
+        model: {
+          id: run.model.id,
+          name: run.model.name,
+          displayName: run.model.displayName,
+          provider: run.model.provider.name,
+          providerKind: run.model.provider.kind,
+        },
+        responseText: run.responseText,
+        finishReason: run.finishReason,
+        inputTokens: run.inputTokens,
+        outputTokens: run.outputTokens,
+        cachedTokens: run.cachedTokens,
+        latencyMs: run.latencyMs,
+        // numeric columns are strings on postgres-js, numbers on pglite — normalize.
+        estimatedCostUsd: run.estimatedCostUsd != null ? Number(run.estimatedCostUsd) : null,
+        pricingSnapshot: run.pricingSnapshot,
+        providerMetrics:
+          rawMeta && typeof rawMeta === "object" && "providerMetrics" in rawMeta
+            ? rawMeta.providerMetrics
+            : null,
+        error: run.error,
+        startedAt: run.startedAt,
+        finishedAt: run.finishedAt,
+      };
+    }),
+    pending: experiment.runs.some((r) => r.status === "pending" || r.status === "running"),
   };
 }
 
@@ -264,36 +285,26 @@ export async function listExperiments(deps: ExperimentDeps, limit = 50) {
     total: e.runs.length,
     succeeded: e.runs.filter((r) => r.status === "success").length,
     failed: e.runs.filter((r) => r.status === "error").length,
+    pending: e.runs.filter((r) => r.status === "pending" || r.status === "running").length,
   }));
 }
 
-export async function rerunExperiment(
+/** Builds the spec for re-running an experiment, or null if it doesn't exist. */
+export async function prepareRerun(
   deps: ExperimentDeps,
   id: string,
-): Promise<{ id: string } | null> {
+): Promise<ExperimentSpec | null> {
   const experiment = await deps.db.query.experiments.findFirst({
     where: eq(experiments.id, id),
     with: { runs: { columns: { modelId: true } } },
   });
   if (!experiment) return null;
 
-  const modelIds = [...new Set(experiment.runs.map((r) => r.modelId))];
-
-  return createAndRunExperiment(deps, {
+  return {
     name: `${experiment.name} (rerun)`,
     promptVersionId: experiment.promptVersionId,
     inputVariables: experiment.inputVariables,
     config: experiment.config,
-    modelIds,
-  });
-}
-
-/** Kept exported so a future SSE route can reuse the "still-running?" check. */
-export async function experimentExists(deps: ExperimentDeps, id: string): Promise<boolean> {
-  const row = await deps.db
-    .select({ id: experiments.id })
-    .from(experiments)
-    .where(and(eq(experiments.id, id)))
-    .limit(1);
-  return row.length > 0;
+    modelIds: [...new Set(experiment.runs.map((r) => r.modelId))],
+  };
 }
