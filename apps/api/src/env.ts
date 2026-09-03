@@ -1,11 +1,21 @@
 import { z } from "zod";
 
+/** Treats "" / whitespace-only env vars as unset (dotenv keeps empty keys as ""). */
+const optional = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    schema.optional(),
+  );
+
 const EnvSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(4000),
-  DATABASE_URL: z.string().url().optional(),
-  ANTHROPIC_API_KEY: z.string().min(1).optional(),
-  OPENAI_API_KEY: z.string().min(1).optional(),
-  OLLAMA_BASE_URL: z.string().url().default("http://localhost:11434"),
+  DATABASE_URL: optional(z.string().url()),
+  ANTHROPIC_API_KEY: optional(z.string().min(1)),
+  OPENAI_API_KEY: optional(z.string().min(1)),
+  OLLAMA_BASE_URL: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() !== "" ? v : "http://localhost:11434"),
+    z.string().url(),
+  ),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
