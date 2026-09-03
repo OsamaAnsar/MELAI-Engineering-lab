@@ -136,6 +136,25 @@ describe("registry + prompt routes", () => {
     ]);
   });
 
+  test("GET /providers/health reports each provider", async () => {
+    const body = (await app.inject({ method: "GET", url: "/providers/health" })).json();
+    const byName = Object.fromEntries(
+      body.providers.map((p: { name: string; healthy: boolean }) => [p.name, p.healthy]),
+    );
+    expect(byName).toEqual({ anthropic: true, openai: true, ollama: true });
+  });
+
+  test("GET /providers/health marks an unconfigured provider unhealthy", async () => {
+    const partialApp = await buildApp({
+      db: asDb(handle.db),
+      registry: registryFromMap(new Map([["ollama", mock("ollama", "local")]])),
+    });
+    const body = (await partialApp.inject({ method: "GET", url: "/providers/health" })).json();
+    const anthropic = body.providers.find((p: { name: string }) => p.name === "anthropic");
+    expect(anthropic).toMatchObject({ healthy: false, reason: "not configured" });
+    await partialApp.close();
+  });
+
   test("POST /prompts then /versions increments the version and extracts variables", async () => {
     const promptId = (
       await app.inject({ method: "POST", url: "/prompts", payload: { name: "greet" } })
