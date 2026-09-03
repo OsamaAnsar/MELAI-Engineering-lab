@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { MissingTemplateVariableError, resolveTemplate, templateVariables } from "../template.js";
+import { MissingTemplateVariableError, resolveTemplate, templateVariables } from "../template";
 
 describe("templateVariables", () => {
   test("returns referenced names in first-seen order, de-duplicated", () => {

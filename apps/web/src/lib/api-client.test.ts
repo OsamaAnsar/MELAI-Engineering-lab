@@ -37,4 +37,21 @@ describe("api client", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
     await expect(api.experiments()).rejects.toBeInstanceOf(ApiError);
   });
+
+  test("startExperiment POSTs the spec as JSON to /experiments", async () => {
+    const spy = mockFetch({ id: "exp1", runs: [] }, { status: 202 });
+    const spec = {
+      name: "t",
+      promptVersionId: "pv1",
+      inputVariables: { a: "1" },
+      config: { temperature: 0.2, maxOutputTokens: 128 },
+      modelIds: ["m1"],
+    };
+    await api.startExperiment(spec);
+
+    const [, init] = spy.mock.calls[0]!;
+    expect(String(spy.mock.calls[0]![0])).toMatch(/\/experiments$/);
+    expect(init).toMatchObject({ method: "POST" });
+    expect(JSON.parse(String(init!.body))).toEqual(spec);
+  });
 });

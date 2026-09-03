@@ -68,10 +68,69 @@ export interface ExperimentSummary {
   pending: number;
 }
 
+export type RunStatus = "pending" | "running" | "success" | "error";
+
+export interface RunDetail {
+  id: string;
+  status: RunStatus;
+  model: {
+    id: string;
+    name: string;
+    displayName: string;
+    provider: string;
+    providerKind: ProviderKind;
+  };
+  responseText: string | null;
+  finishReason: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cachedTokens: number | null;
+  latencyMs: number | null;
+  estimatedCostUsd: number | null;
+  providerMetrics: Record<string, number> | null;
+  error: { name: string; message: string } | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface ExperimentDetail {
+  id: string;
+  name: string;
+  createdAt: string;
+  inputVariables: Record<string, string>;
+  config: { temperature: number; maxOutputTokens: number };
+  prompt: { name: string; version: number; template: string };
+  runs: RunDetail[];
+  pending: boolean;
+}
+
+export interface ExperimentSpec {
+  name: string;
+  promptVersionId: string;
+  inputVariables: Record<string, string>;
+  config: { temperature: number; maxOutputTokens: number };
+  modelIds: string[];
+}
+
 // --- endpoints ---
 
 export const api = {
   models: () => request<{ models: ModelSummary[] }>("/models"),
   providerHealth: () => request<{ providers: ProviderHealth[] }>("/providers/health"),
+
   experiments: () => request<{ experiments: ExperimentSummary[] }>("/experiments"),
+  experiment: (id: string) => request<ExperimentDetail>(`/experiments/${id}`),
+  startExperiment: (spec: ExperimentSpec) =>
+    request<ExperimentDetail>("/experiments", { method: "POST", body: JSON.stringify(spec) }),
+
+  createPrompt: (name: string) =>
+    request<{ id: string; name: string }>("/prompts", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  createPromptVersion: (promptId: string, template: string) =>
+    request<{ id: string; version: number; variables: string[] }>(`/prompts/${promptId}/versions`, {
+      method: "POST",
+      body: JSON.stringify({ template }),
+    }),
 };
