@@ -18,8 +18,23 @@ OpenAI, or the built-in mock), run them concurrently, and watch results stream i
 | -------------------------------------- | ---------------------------------------- |
 | ![Models](docs/screenshots/models.png) | ![Results](docs/screenshots/results.png) |
 
-Five more labs follow the same "observe → compare → evaluate → debug → improve" loop:
-RAG, Evaluation, Agents, Local-AI observability, and a CLI + CI regression gate.
+## Milestone 2 — RAG Lab
+
+The second lab is shipped: paste a document, chunk it (fixed-size or sentence-aware),
+embed it, then run one query against BM25, vector, and hybrid (Reciprocal Rank
+Fusion) retrieval concurrently — side by side, with the per-method rank and score
+that produced each hybrid result.
+
+- **BM25, RRF and cosine search are from-scratch**, not a library — `packages/ai-core/src/retrieval/`.
+- **Embeddings share one fixed 768-dimension pgvector column** across providers:
+  Ollama's `nomic-embed-text` is natively 768-dim (the zero-cost local path);
+  OpenAI's `text-embedding-3-small` is asked for `dimensions: 768` on every call.
+- **Chunking and embedding are idempotent** — re-running either against the same
+  (document, config) or (chunk, model) pair returns the cached rows instead of
+  recomputing.
+
+Four more labs follow the same "observe → compare → evaluate → debug → improve" loop:
+Evaluation, Agents, Local-AI observability, and a CLI + CI regression gate.
 
 ## Quick start (no Docker, no API keys)
 
@@ -36,24 +51,30 @@ pick **Mock (echo)**, and hit run. The mock provider echoes the prompt back with
 deterministic latency/token/cost numbers, so the whole loop works with zero
 configuration.
 
+Or go to **RAG Lab → New document**, paste some text, chunk it, embed it with
+**Mock (embed)**, add BM25 + Vector + Hybrid to compare, and run a query — same
+zero-config story, deterministic mock embeddings included.
+
 To use real models, add credentials to `.env` (no re-seed needed — the models are
 already there, the provider just needs a key):
 
 - `ANTHROPIC_API_KEY=...` / `OPENAI_API_KEY=...` — the provider turns green on the
   Models page once a key is present.
-- `ollama pull qwen2.5:7b-instruct` — for the local model (Ollama on
-  `OLLAMA_BASE_URL`, default `http://localhost:11434`).
+- `ollama pull qwen2.5:7b-instruct` — for the local chat model, and
+  `ollama pull nomic-embed-text` — for the local (free) embedding model. Both use
+  `OLLAMA_BASE_URL`, default `http://localhost:11434`.
 
 ## How it works
 
 ```
 apps/
-  web/    Next.js (App Router) — builder, history, live results
-  api/    Fastify — experiment engine + REST + SSE
+  web/    Next.js (App Router) — builder, history, live results; RAG Lab workspace + results
+  api/    Fastify — experiment engine + RAG engine + REST + SSE
 packages/
-  ai-core/    ModelProvider interface, provider adapters, cost math, MockProvider
-  database/   Drizzle schema, migrations, seed; Postgres or in-process PGlite
-  shared/     Zod experiment spec, prompt templating, the API DTO types
+  ai-core/    ModelProvider + EmbeddingProvider interfaces, adapters, cost math,
+              from-scratch retrieval (chunking, BM25, RRF, cosine search)
+  database/   Drizzle schema, migrations, seed; Postgres or in-process PGlite + pgvector
+  shared/     Zod specs (experiment, chunking, retrieval), prompt templating, API DTO types
 ```
 
 - **Every provider is behind one `ModelProvider` interface.** The Anthropic, OpenAI
@@ -64,13 +85,16 @@ packages/
 - **The API is the source of truth for response shapes.** `packages/shared/src/dto.ts`
   defines the wire types; the API handlers are annotated against them and the web
   client imports them, so a drift is a type error.
-- **Runs are asynchronous.** `POST /experiments` returns `202` with pending runs;
-  `GET /experiments/:id/stream` is a Server-Sent Events stream of `run.started` /
-  `run.completed` / `experiment.done`. The results page opens the stream and
-  re-fetches on each event.
+- **Runs are asynchronous.** `POST /experiments` and `POST /retrieval-runs` both
+  return `202` with pending results; `GET /experiments/:id/stream` and
+  `GET /retrieval-runs/:id/stream` are Server-Sent Events streams (`run.*` /
+  `experiment.done`, and `result.*` / `retrieval_run.done`). Both results pages
+  open the stream and re-fetch on each event — same event-bus pattern, one
+  instance per app.
 - **The dev database is in-process.** `DB_DRIVER=pglite` (the default) runs
-  PGlite with the real migrations under `packages/database/.pglite` — no container.
-  Set `DB_DRIVER=postgres` to use `DATABASE_URL` instead.
+  PGlite — with the pgvector extension loaded — under `packages/database/.pglite`,
+  no container. Set `DB_DRIVER=postgres` to use `DATABASE_URL` instead (the
+  `pgvector/pgvector:pg17` image via `pnpm db:up`).
 
 ## Testing
 
