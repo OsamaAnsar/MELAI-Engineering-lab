@@ -4,3 +4,7 @@ dist
 .turbo
 coverage
 pnpm-lock.yaml
+.pglite
+test-results
+playwright-report
+blob-report
