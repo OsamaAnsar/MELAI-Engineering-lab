@@ -13,6 +13,7 @@ import {
 import { createTestDatabase, type TestDatabaseHandle } from "@melai/database/testing";
 import { buildApp } from "../app.js";
 import { registryFromMap } from "../providers.js";
+import { embeddingRegistryFromMap } from "../embeddings.js";
 
 let handle: TestDatabaseHandle;
 let app: FastifyInstance;
@@ -37,6 +38,10 @@ const registry = registryFromMap(
   ]),
 );
 
+// This test file only exercises /experiments routes; the rag routes have their
+// own test file with real embedding-registry coverage, so an empty map is fine here.
+const embeddingRegistry = embeddingRegistryFromMap(new Map());
+
 /** Poll the detail endpoint until no run is still pending/running. */
 async function waitForDone(
   a: FastifyInstance,
@@ -56,7 +61,7 @@ const seeded = { anthropicModelId: "", ollamaModelId: "", promptVersionId: "" };
 
 beforeAll(async () => {
   handle = await createTestDatabase();
-  app = await buildApp({ db: asDb(handle.db), registry });
+  app = await buildApp({ db: asDb(handle.db), registry, embeddingRegistry });
   await app.ready();
 });
 
@@ -148,6 +153,7 @@ describe("registry + prompt routes", () => {
     const partialApp = await buildApp({
       db: asDb(handle.db),
       registry: registryFromMap(new Map([["ollama", mock("ollama", "local")]])),
+      embeddingRegistry,
     });
     const body = (await partialApp.inject({ method: "GET", url: "/providers/health" })).json();
     const anthropic = body.providers.find((p: { name: string }) => p.name === "anthropic");
@@ -218,6 +224,7 @@ describe("POST /experiments", () => {
           ["ollama", mock("ollama", "local")],
         ]),
       ),
+      embeddingRegistry,
     });
 
     const accepted = (
@@ -257,7 +264,7 @@ describe("POST /experiments", () => {
 
 describe("GET /experiments/:id/stream (SSE)", () => {
   test("emits a snapshot then experiment.done", async () => {
-    const sseApp = await buildApp({ db: asDb(handle.db), registry });
+    const sseApp = await buildApp({ db: asDb(handle.db), registry, embeddingRegistry });
     await sseApp.listen({ port: 0, host: "127.0.0.1" });
     const address = sseApp.server.address();
     const port = typeof address === "object" && address ? address.port : 0;

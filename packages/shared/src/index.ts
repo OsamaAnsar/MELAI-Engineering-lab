@@ -4,6 +4,25 @@ export { resolveTemplate, templateVariables, MissingTemplateVariableError } from
 
 export { experimentSpecSchema, type ExperimentSpec, type RunStatus } from "./experiment";
 
+export {
+  fixedChunkParamsSchema,
+  sentenceChunkParamsSchema,
+  chunkingConfigSpecSchema,
+  bm25ParamsSchema,
+  vectorParamsSchema,
+  hybridRrfParamsSchema,
+  retrievalConfigSpecSchema,
+  retrievalRunSpecSchema,
+  type FixedChunkParams,
+  type SentenceChunkParams,
+  type ChunkingConfigSpec,
+  type Bm25Params,
+  type VectorParams,
+  type HybridRrfParams,
+  type RetrievalConfigSpec,
+  type RetrievalRunSpec,
+} from "./rag";
+
 export type {
   ProviderKind,
   ModelSummary,

@@ -20,6 +20,7 @@ import {
 } from "@melai/shared";
 import type { ExperimentEvents } from "./events.js";
 import type { ProviderRegistry } from "../providers.js";
+import { BadRequestError, NotFoundError } from "../errors.js";
 
 export interface ExperimentDeps {
   db: Database;
@@ -27,19 +28,7 @@ export interface ExperimentDeps {
   events: ExperimentEvents;
 }
 
-export class NotFoundError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "NotFoundError";
-  }
-}
-
-export class BadRequestError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "BadRequestError";
-  }
-}
+export { NotFoundError, BadRequestError };
 
 type ModelRow = typeof models.$inferSelect & { providerName: string };
 

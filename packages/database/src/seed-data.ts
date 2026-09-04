@@ -15,11 +15,20 @@ export interface SeedModel {
   cachedInputPricePerMtok: string | null;
 }
 
+export interface SeedEmbeddingModel {
+  name: string;
+  displayName: string;
+  /** Fixed at 768 for M2 — see EMBEDDING_DIMENSIONS in schema.ts. */
+  dimensions: number;
+  pricePerMtok: string | null;
+}
+
 export interface SeedProvider {
   name: string;
   kind: "cloud" | "local";
   config: Record<string, unknown>;
   models: SeedModel[];
+  embeddingModels?: SeedEmbeddingModel[];
 }
 
 export const seedProviders: SeedProvider[] = [
@@ -60,6 +69,14 @@ export const seedProviders: SeedProvider[] = [
         cachedInputPricePerMtok: "0.500000",
       },
     ],
+    embeddingModels: [
+      {
+        name: "text-embedding-3-small",
+        displayName: "text-embedding-3-small (truncated to 768d)",
+        dimensions: 768,
+        pricePerMtok: "0.020000",
+      },
+    ],
   },
   {
     name: "ollama",
@@ -75,6 +92,14 @@ export const seedProviders: SeedProvider[] = [
         cachedInputPricePerMtok: null,
       },
     ],
+    embeddingModels: [
+      {
+        name: "nomic-embed-text",
+        displayName: "Nomic Embed Text (local)",
+        dimensions: 768,
+        pricePerMtok: "0.000000",
+      },
+    ],
   },
   {
     name: "mock",
@@ -88,6 +113,14 @@ export const seedProviders: SeedProvider[] = [
         inputPricePerMtok: "1.000000",
         outputPricePerMtok: "3.000000",
         cachedInputPricePerMtok: null,
+      },
+    ],
+    embeddingModels: [
+      {
+        name: "mock-embed",
+        displayName: "Mock (embed)",
+        dimensions: 768,
+        pricePerMtok: "0.000000",
       },
     ],
   },

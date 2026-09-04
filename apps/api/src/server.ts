@@ -2,6 +2,7 @@ import { createDatabase, createPgliteDatabase } from "@melai/database";
 import { buildApp } from "./app.js";
 import { loadEnv } from "./env.js";
 import { makeProviderRegistry } from "./providers.js";
+import { makeEmbeddingProviderRegistry } from "./embeddings.js";
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -17,7 +18,8 @@ async function main(): Promise<void> {
         })();
 
   const registry = makeProviderRegistry(env);
-  const app = await buildApp({ db, registry });
+  const embeddingRegistry = makeEmbeddingProviderRegistry(env);
+  const app = await buildApp({ db, registry, embeddingRegistry });
   await app.listen({ port: env.API_PORT, host: "0.0.0.0" });
   app.log.info(`db driver: ${env.DB_DRIVER}`);
 }

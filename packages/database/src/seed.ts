@@ -1,7 +1,7 @@
 import { createDatabase } from "./client.js";
 import { getDatabaseUrl } from "./env.js";
 import { createPgliteDatabase } from "./pglite.js";
-import { models, providers } from "./schema.js";
+import { embeddingModels, models, providers } from "./schema.js";
 import { seedProviders } from "./seed-data.js";
 
 async function seed(): Promise<void> {
@@ -31,7 +31,16 @@ async function seed(): Promise<void> {
           .onConflictDoNothing({ target: [models.providerId, models.name] });
       }
 
-      console.log(`seeded ${p.name} (${p.models.length} model(s))`);
+      for (const m of p.embeddingModels ?? []) {
+        await db
+          .insert(embeddingModels)
+          .values({ providerId: providerRow.id, ...m })
+          .onConflictDoNothing({ target: [embeddingModels.providerId, embeddingModels.name] });
+      }
+
+      console.log(
+        `seeded ${p.name} (${p.models.length} model(s), ${(p.embeddingModels ?? []).length} embedding model(s))`,
+      );
     }
   } finally {
     await close();
