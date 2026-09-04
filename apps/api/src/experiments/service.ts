@@ -11,7 +11,13 @@ import {
   type Database,
   type RunRequestSnapshot,
 } from "@melai/database";
-import { resolveTemplate, MissingTemplateVariableError, type ExperimentSpec } from "@melai/shared";
+import {
+  resolveTemplate,
+  MissingTemplateVariableError,
+  type ExperimentDetail,
+  type ExperimentSpec,
+  type ExperimentSummary,
+} from "@melai/shared";
 import type { ExperimentEvents } from "./events.js";
 import type { ProviderRegistry } from "../providers.js";
 
@@ -217,7 +223,10 @@ export async function runExperiment(deps: ExperimentDeps, plan: RunPlan): Promis
   deps.events.emit({ type: "experiment.done", experimentId: plan.experimentId });
 }
 
-export async function getExperiment(deps: ExperimentDeps, id: string) {
+export async function getExperiment(
+  deps: ExperimentDeps,
+  id: string,
+): Promise<ExperimentDetail | null> {
   const experiment = await deps.db.query.experiments.findFirst({
     where: eq(experiments.id, id),
     with: {
@@ -230,7 +239,7 @@ export async function getExperiment(deps: ExperimentDeps, id: string) {
   return {
     id: experiment.id,
     name: experiment.name,
-    createdAt: experiment.createdAt,
+    createdAt: experiment.createdAt.toISOString(),
     inputVariables: experiment.inputVariables,
     config: experiment.config,
     prompt: {
@@ -261,19 +270,22 @@ export async function getExperiment(deps: ExperimentDeps, id: string) {
         pricingSnapshot: run.pricingSnapshot,
         providerMetrics:
           rawMeta && typeof rawMeta === "object" && "providerMetrics" in rawMeta
-            ? rawMeta.providerMetrics
+            ? (rawMeta.providerMetrics as Record<string, number> | null)
             : null,
         raw: rawMeta && typeof rawMeta === "object" && "raw" in rawMeta ? rawMeta.raw : null,
         error: run.error,
-        startedAt: run.startedAt,
-        finishedAt: run.finishedAt,
+        startedAt: run.startedAt ? run.startedAt.toISOString() : null,
+        finishedAt: run.finishedAt ? run.finishedAt.toISOString() : null,
       };
     }),
     pending: experiment.runs.some((r) => r.status === "pending" || r.status === "running"),
   };
 }
 
-export async function listExperiments(deps: ExperimentDeps, limit = 50) {
+export async function listExperiments(
+  deps: ExperimentDeps,
+  limit = 50,
+): Promise<ExperimentSummary[]> {
   const rows = await deps.db.query.experiments.findMany({
     orderBy: desc(experiments.createdAt),
     limit,
@@ -282,7 +294,7 @@ export async function listExperiments(deps: ExperimentDeps, limit = 50) {
   return rows.map((e) => ({
     id: e.id,
     name: e.name,
-    createdAt: e.createdAt,
+    createdAt: e.createdAt.toISOString(),
     total: e.runs.length,
     succeeded: e.runs.filter((r) => r.status === "success").length,
     failed: e.runs.filter((r) => r.status === "error").length,

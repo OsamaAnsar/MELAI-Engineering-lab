@@ -1,7 +1,28 @@
 /**
- * Typed client for the @melai/api service. Response shapes mirror the API route
- * handlers (kept in sync by hand for now).
+ * Typed client for the @melai/api service. The response shapes live in
+ * @melai/shared and are re-exported here so existing call sites keep importing
+ * them from "../lib/api-client".
  */
+
+import type {
+  ExperimentDetail,
+  ExperimentSpec,
+  ExperimentSummary,
+  ModelSummary,
+  ProviderHealth,
+} from "@melai/shared";
+
+export type {
+  ExperimentDetail,
+  ExperimentSpec,
+  ExperimentSummary,
+  ModelSummary,
+  ProviderHealth,
+  ProviderKind,
+  RunDetail,
+  RunModelInfo,
+} from "@melai/shared";
+export type { RunStatus } from "@melai/shared";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
@@ -32,85 +53,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, path, detail);
   }
   return (await res.json()) as T;
-}
-
-// --- response types ---
-
-export type ProviderKind = "cloud" | "local";
-
-export interface ModelSummary {
-  id: string;
-  name: string;
-  displayName: string;
-  provider: string;
-  providerKind: ProviderKind;
-  contextLength: number | null;
-  inputPricePerMtok: string | null;
-  outputPricePerMtok: string | null;
-  cachedInputPricePerMtok: string | null;
-  active: boolean;
-}
-
-export interface ProviderHealth {
-  name: string;
-  kind: ProviderKind;
-  healthy: boolean;
-  reason?: string;
-}
-
-export interface ExperimentSummary {
-  id: string;
-  name: string;
-  createdAt: string;
-  total: number;
-  succeeded: number;
-  failed: number;
-  pending: number;
-}
-
-export type RunStatus = "pending" | "running" | "success" | "error";
-
-export interface RunDetail {
-  id: string;
-  status: RunStatus;
-  model: {
-    id: string;
-    name: string;
-    displayName: string;
-    provider: string;
-    providerKind: ProviderKind;
-  };
-  responseText: string | null;
-  finishReason: string | null;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  cachedTokens: number | null;
-  latencyMs: number | null;
-  estimatedCostUsd: number | null;
-  providerMetrics: Record<string, number> | null;
-  raw: unknown;
-  error: { name: string; message: string } | null;
-  startedAt: string | null;
-  finishedAt: string | null;
-}
-
-export interface ExperimentDetail {
-  id: string;
-  name: string;
-  createdAt: string;
-  inputVariables: Record<string, string>;
-  config: { temperature: number; maxOutputTokens: number };
-  prompt: { name: string; version: number; template: string };
-  runs: RunDetail[];
-  pending: boolean;
-}
-
-export interface ExperimentSpec {
-  name: string;
-  promptVersionId: string;
-  inputVariables: Record<string, string>;
-  config: { temperature: number; maxOutputTokens: number };
-  modelIds: string[];
 }
 
 // --- endpoints ---

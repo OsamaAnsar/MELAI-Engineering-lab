@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { asc, eq, models, providers } from "@melai/database";
+import type { ModelSummary, ProviderHealth } from "@melai/shared";
 import type { ExperimentDeps } from "../experiments/service.js";
 
 export function registryRoutes(deps: Pick<ExperimentDeps, "db" | "registry">): FastifyPluginAsync {
@@ -23,8 +24,8 @@ export function registryRoutes(deps: Pick<ExperimentDeps, "db" | "registry">): F
         .from(providers)
         .orderBy(asc(providers.name));
 
-      const checked = await Promise.all(
-        rows.map(async (row) => {
+      const checked: ProviderHealth[] = await Promise.all(
+        rows.map(async (row): Promise<ProviderHealth> => {
           const provider = deps.registry.get(row.name);
           if (!provider) {
             return { name: row.name, kind: row.kind, healthy: false, reason: "not configured" };
@@ -61,7 +62,7 @@ export function registryRoutes(deps: Pick<ExperimentDeps, "db" | "registry">): F
         .from(models)
         .innerJoin(providers, eq(models.providerId, providers.id))
         .orderBy(asc(providers.name), asc(models.displayName));
-      return { models: rows };
+      return { models: rows } satisfies { models: ModelSummary[] };
     });
   };
 }
