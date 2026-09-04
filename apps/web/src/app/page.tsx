@@ -23,7 +23,12 @@ const LABS = [
     body: "Run one prompt against several models and compare answers, latency, tokens and cost.",
     ready: true,
   },
-  { href: "#", title: "RAG Lab", body: "Compare retrieval pipelines side by side.", ready: false },
+  {
+    href: "/rag",
+    title: "RAG Lab",
+    body: "Chunk, embed, and compare BM25, vector and hybrid retrieval side by side.",
+    ready: true,
+  },
   { href: "#", title: "Evaluation Lab", body: "Score pipelines against datasets.", ready: false },
 ];
 

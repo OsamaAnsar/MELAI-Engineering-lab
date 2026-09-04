@@ -5,11 +5,21 @@
  */
 
 import type {
+  ChunkDetail,
+  ChunkingConfigSpec,
+  ChunkingConfigSummary,
+  DocumentSummary,
+  EmbeddingModelSummary,
   ExperimentDetail,
   ExperimentSpec,
   ExperimentSummary,
   ModelSummary,
   ProviderHealth,
+  RetrievalConfigSpec,
+  RetrievalConfigSummary,
+  RetrievalRunDetail,
+  RetrievalRunSpec,
+  RetrievalRunSummary,
 } from "@melai/shared";
 
 export type {
@@ -21,6 +31,20 @@ export type {
   ProviderKind,
   RunDetail,
   RunModelInfo,
+  ChunkingStrategy,
+  RetrievalMethod,
+  ChunkDetail,
+  ChunkingConfigSpec,
+  ChunkingConfigSummary,
+  DocumentSummary,
+  EmbeddingModelSummary,
+  RetrievalCandidateDto,
+  RetrievalConfigSpec,
+  RetrievalConfigSummary,
+  RetrievalResultDetail,
+  RetrievalRunDetail,
+  RetrievalRunSpec,
+  RetrievalRunSummary,
 } from "@melai/shared";
 export type { RunStatus } from "@melai/shared";
 
@@ -78,4 +102,39 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ template }),
     }),
+
+  // --- RAG Lab ---
+  documents: () => request<{ documents: DocumentSummary[] }>("/documents"),
+  document: (id: string) => request<DocumentSummary>(`/documents/${id}`),
+  createDocument: (input: { name: string; content: string }) =>
+    request<DocumentSummary>("/documents", { method: "POST", body: JSON.stringify(input) }),
+
+  createChunkingConfig: (spec: ChunkingConfigSpec) =>
+    request<ChunkingConfigSummary>("/chunking-configs", {
+      method: "POST",
+      body: JSON.stringify(spec),
+    }),
+  chunkDocument: (documentId: string, chunkingConfigId: string) =>
+    request<{ chunks: ChunkDetail[] }>(`/documents/${documentId}/chunk`, {
+      method: "POST",
+      body: JSON.stringify({ chunkingConfigId }),
+    }),
+
+  embeddingModels: () => request<{ embeddingModels: EmbeddingModelSummary[] }>("/embedding-models"),
+  embedChunkingConfig: (chunkingConfigId: string, embeddingModelId: string) =>
+    request<{ embedded: number }>(`/chunking-configs/${chunkingConfigId}/embed`, {
+      method: "POST",
+      body: JSON.stringify({ embeddingModelId }),
+    }),
+
+  createRetrievalConfig: (spec: RetrievalConfigSpec) =>
+    request<RetrievalConfigSummary>("/retrieval-configs", {
+      method: "POST",
+      body: JSON.stringify(spec),
+    }),
+
+  retrievalRuns: () => request<{ retrievalRuns: RetrievalRunSummary[] }>("/retrieval-runs"),
+  retrievalRun: (id: string) => request<RetrievalRunDetail>(`/retrieval-runs/${id}`),
+  startRetrievalRun: (spec: RetrievalRunSpec) =>
+    request<RetrievalRunDetail>("/retrieval-runs", { method: "POST", body: JSON.stringify(spec) }),
 };

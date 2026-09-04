@@ -9,6 +9,7 @@ import {
   embeddingModels,
   embeddings,
   inArray,
+  providers,
   retrievalConfigs,
   retrievalRunResults,
   retrievalRuns,
@@ -31,9 +32,16 @@ import {
   hybridRrfParamsSchema,
   sentenceChunkParamsSchema,
   vectorParamsSchema,
+  type ChunkDetail,
   type ChunkingConfigSpec,
+  type ChunkingConfigSummary,
+  type DocumentSummary,
+  type EmbeddingModelSummary,
   type RetrievalConfigSpec,
+  type RetrievalConfigSummary,
+  type RetrievalRunDetail,
   type RetrievalRunSpec,
+  type RetrievalRunSummary,
 } from "@melai/shared";
 import { BadRequestError, NotFoundError } from "../errors.js";
 import type { EmbeddingProviderRegistry } from "../embeddings.js";
@@ -50,24 +58,30 @@ export interface RagDeps {
 export async function createDocument(
   deps: Pick<RagDeps, "db">,
   input: { name: string; content: string },
-) {
+): Promise<DocumentSummary> {
   const [document] = await deps.db.insert(documents).values(input).returning();
   if (!document) throw new Error("Failed to create document");
   return document;
 }
 
-export async function listDocuments(deps: Pick<RagDeps, "db">) {
+export async function listDocuments(deps: Pick<RagDeps, "db">): Promise<DocumentSummary[]> {
   return deps.db.query.documents.findMany({ orderBy: desc(documents.createdAt) });
 }
 
-export async function getDocument(deps: Pick<RagDeps, "db">, id: string) {
+export async function getDocument(
+  deps: Pick<RagDeps, "db">,
+  id: string,
+): Promise<DocumentSummary | null> {
   return (await deps.db.query.documents.findFirst({ where: eq(documents.id, id) })) ?? null;
 }
 
 // --- chunking ---
 
 /** Validates `spec.params` against the schema for `spec.strategy` before insert. */
-export async function createChunkingConfig(deps: Pick<RagDeps, "db">, spec: ChunkingConfigSpec) {
+export async function createChunkingConfig(
+  deps: Pick<RagDeps, "db">,
+  spec: ChunkingConfigSpec,
+): Promise<ChunkingConfigSummary> {
   const paramsSchema =
     spec.strategy === "fixed" ? fixedChunkParamsSchema : sentenceChunkParamsSchema;
   const params = paramsSchema.safeParse(spec.params);
@@ -91,7 +105,7 @@ export async function chunkDocument(
   deps: Pick<RagDeps, "db">,
   documentId: string,
   chunkingConfigId: string,
-) {
+): Promise<ChunkDetail[]> {
   const document = await getDocument(deps, documentId);
   if (!document) throw new NotFoundError(`Document ${documentId} not found`);
 
@@ -128,11 +142,22 @@ export async function chunkDocument(
 
 // --- embedding ---
 
-export async function listEmbeddingModels(deps: Pick<RagDeps, "db">) {
-  return deps.db.query.embeddingModels.findMany({
-    with: { provider: true },
-    orderBy: asc(embeddingModels.displayName),
-  });
+export async function listEmbeddingModels(
+  deps: Pick<RagDeps, "db">,
+): Promise<EmbeddingModelSummary[]> {
+  return deps.db
+    .select({
+      id: embeddingModels.id,
+      name: embeddingModels.name,
+      displayName: embeddingModels.displayName,
+      dimensions: embeddingModels.dimensions,
+      pricePerMtok: embeddingModels.pricePerMtok,
+      provider: providers.name,
+      providerKind: providers.kind,
+    })
+    .from(embeddingModels)
+    .innerJoin(providers, eq(embeddingModels.providerId, providers.id))
+    .orderBy(asc(embeddingModels.displayName));
 }
 
 /**
@@ -200,7 +225,10 @@ export async function embedChunks(
 // --- retrieval configs ---
 
 /** Validates `spec.params` against the schema for `spec.method` before insert. */
-export async function createRetrievalConfig(deps: Pick<RagDeps, "db">, spec: RetrievalConfigSpec) {
+export async function createRetrievalConfig(
+  deps: Pick<RagDeps, "db">,
+  spec: RetrievalConfigSpec,
+): Promise<RetrievalConfigSummary> {
   const paramsSchema =
     spec.method === "bm25"
       ? bm25ParamsSchema
@@ -463,7 +491,10 @@ export async function runRetrievalRun(
   deps.events.emit({ type: "retrieval_run.done", retrievalRunId: plan.retrievalRunId });
 }
 
-export async function getRetrievalRun(deps: Pick<RagDeps, "db">, id: string) {
+export async function getRetrievalRun(
+  deps: Pick<RagDeps, "db">,
+  id: string,
+): Promise<RetrievalRunDetail | null> {
   const run = await deps.db.query.retrievalRuns.findFirst({
     where: eq(retrievalRuns.id, id),
     with: {
@@ -503,7 +534,10 @@ export async function getRetrievalRun(deps: Pick<RagDeps, "db">, id: string) {
   };
 }
 
-export async function listRetrievalRuns(deps: Pick<RagDeps, "db">, limit = 50) {
+export async function listRetrievalRuns(
+  deps: Pick<RagDeps, "db">,
+  limit = 50,
+): Promise<RetrievalRunSummary[]> {
   const rows = await deps.db.query.retrievalRuns.findMany({
     orderBy: desc(retrievalRuns.createdAt),
     limit,

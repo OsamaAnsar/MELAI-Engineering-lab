@@ -3,10 +3,11 @@ import Link from "next/link";
 const LIVE = [
   { href: "/", label: "Dashboard" },
   { href: "/experiments", label: "Experiments" },
+  { href: "/rag", label: "RAG Lab" },
   { href: "/models", label: "Models" },
 ];
 
-const SOON = ["RAG", "Agents", "Prompts", "Evals", "Traces"];
+const SOON = ["Agents", "Prompts", "Evals", "Traces"];
 
 export function Nav() {
   return (
