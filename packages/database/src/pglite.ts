@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite-pgvector";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import type { Database, DatabaseHandle } from "./client.js";
@@ -19,7 +20,7 @@ const defaultDataDir = fileURLToPath(new URL("../.pglite", import.meta.url));
 export async function createPgliteDatabase(
   dataDir: string = defaultDataDir,
 ): Promise<DatabaseHandle> {
-  const pg = new PGlite(dataDir);
+  const pg = new PGlite(dataDir, { extensions: { vector } });
   const db = drizzle(pg, { schema });
   await migrate(db, { migrationsFolder });
   return {
