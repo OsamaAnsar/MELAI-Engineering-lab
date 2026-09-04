@@ -21,3 +21,15 @@ export {
 } from "./cost.js";
 
 export { MockProvider, type MockProviderOptions } from "./mock-provider.js";
+
+export type {
+  EmbeddingProvider,
+  EmbeddingRequest,
+  EmbeddingResult,
+  EmbeddingUsage,
+} from "./embedding-types.js";
+
+export {
+  MockEmbeddingProvider,
+  type MockEmbeddingProviderOptions,
+} from "./mock-embedding-provider.js";

@@ -6,6 +6,7 @@ import type {
   GenerationResult,
   ModelProvider,
 } from "../types.js";
+import type { EmbeddingProvider, EmbeddingRequest, EmbeddingResult } from "../embedding-types.js";
 
 export interface OllamaProviderOptions {
   /** Defaults to http://localhost:11434. */
@@ -147,6 +148,57 @@ export class OllamaProvider implements ModelProvider {
   async healthCheck(): Promise<boolean> {
     try {
       await this.#client().list();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** The zero-cost local embedding path, e.g. `ollama pull nomic-embed-text`. */
+export class OllamaEmbeddingProvider implements EmbeddingProvider {
+  readonly id = "ollama";
+  readonly kind = "local" as const;
+
+  readonly #host: string;
+  readonly #fetch: typeof fetch | undefined;
+
+  constructor(options: OllamaProviderOptions = {}) {
+    this.#host = options.host ?? DEFAULT_HOST;
+    this.#fetch = options.fetch;
+  }
+
+  async embed(req: EmbeddingRequest): Promise<EmbeddingResult> {
+    req.signal?.throwIfAborted();
+    const client = new Ollama({ host: this.#host, fetch: this.#fetch });
+    if (req.signal) {
+      if (req.signal.aborted) client.abort();
+      else req.signal.addEventListener("abort", () => client.abort(), { once: true });
+    }
+
+    const start = performance.now();
+    let res: Awaited<ReturnType<typeof client.embed>>;
+    try {
+      res = await client.embed({ model: req.model, input: req.texts });
+    } catch (err) {
+      throw toError(err);
+    }
+
+    return {
+      vectors: res.embeddings,
+      model: res.model,
+      provider: this.id,
+      providerKind: this.kind,
+      latencyMs: Math.round(performance.now() - start),
+      usage: { tokens: res.prompt_eval_count },
+      estimatedCostUsd: 0,
+      raw: res as unknown as Record<string, unknown>,
+    };
+  }
+
+  async healthCheck(): Promise<boolean> {
+    try {
+      await new Ollama({ host: this.#host, fetch: this.#fetch }).list();
       return true;
     } catch {
       return false;

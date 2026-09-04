@@ -7,6 +7,7 @@ import type {
   ModelProvider,
   TokenUsage,
 } from "../types.js";
+import type { EmbeddingProvider, EmbeddingRequest, EmbeddingResult } from "../embedding-types.js";
 
 export interface OpenAIProviderOptions {
   apiKey: string;
@@ -136,6 +137,65 @@ export class OpenAIProvider implements ModelProvider {
       },
       { signal: req.signal },
     );
+  }
+
+  async healthCheck(): Promise<boolean> {
+    try {
+      await this.#client.models.list();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** Requests `dimensions: 768` so its output shares the fixed pgvector column width with Ollama's nomic-embed-text. */
+export class OpenAIEmbeddingProvider implements EmbeddingProvider {
+  readonly id = "openai";
+  readonly kind = "cloud" as const;
+
+  readonly #client: OpenAI;
+  readonly #dimensions: number;
+
+  constructor(options: OpenAIProviderOptions & { dimensions?: number }) {
+    this.#client = new OpenAI({
+      apiKey: options.apiKey,
+      baseURL: options.baseURL,
+      maxRetries: options.maxRetries ?? 2,
+      fetch: options.fetch,
+    });
+    this.#dimensions = options.dimensions ?? 768;
+  }
+
+  async embed(req: EmbeddingRequest): Promise<EmbeddingResult> {
+    const start = performance.now();
+
+    let res: OpenAI.CreateEmbeddingResponse;
+    try {
+      res = await this.#client.embeddings.create(
+        {
+          model: req.model,
+          input: req.texts,
+          dimensions: this.#dimensions,
+          // Explicit, so the SDK returns plain float arrays instead of its
+          // default base64-on-the-wire encoding (decoded client-side).
+          encoding_format: "float",
+        },
+        { signal: req.signal },
+      );
+    } catch (err) {
+      throw toError(err);
+    }
+
+    return {
+      vectors: res.data.sort((a, b) => a.index - b.index).map((d) => d.embedding),
+      model: res.model,
+      provider: this.id,
+      providerKind: this.kind,
+      latencyMs: Math.round(performance.now() - start),
+      usage: { tokens: res.usage.total_tokens },
+      raw: res as unknown as Record<string, unknown>,
+    };
   }
 
   async healthCheck(): Promise<boolean> {
