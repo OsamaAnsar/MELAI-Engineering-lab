@@ -160,3 +160,94 @@ export interface RetrievalRunSummary {
   failed: number;
   pending: number;
 }
+
+// --- Evaluation Lab (M3) ---
+
+export type EvalTarget = "retrieval" | "generation";
+
+export interface ScorerSpecDto {
+  kind: string;
+  params: Record<string, unknown>;
+}
+
+export interface DatasetSummary {
+  id: string;
+  name: string;
+  target: EvalTarget;
+  description: string | null;
+  caseCount: number;
+  createdAt: string;
+}
+
+export interface DatasetCaseDto {
+  id: string;
+  label: string | null;
+  input: Record<string, unknown>;
+  expected: Record<string, unknown>;
+}
+
+export interface DatasetDetail {
+  id: string;
+  name: string;
+  target: EvalTarget;
+  description: string | null;
+  createdAt: string;
+  cases: DatasetCaseDto[];
+}
+
+export interface EvalConfigSummary {
+  id: string;
+  name: string;
+  target: EvalTarget;
+  scorers: ScorerSpecDto[];
+  judgeModel: { id: string; displayName: string } | null;
+}
+
+export interface EvalScoreDto {
+  value: number;
+  pass?: boolean;
+  reason?: string;
+}
+
+export interface EvalCaseResultDto {
+  id: string;
+  status: RunStatus;
+  case: {
+    id: string;
+    label: string | null;
+    input: Record<string, unknown>;
+    expected: Record<string, unknown>;
+  };
+  output: Record<string, unknown> | null;
+  scores: Record<string, EvalScoreDto> | null;
+  latencyMs: number | null;
+  error: { name: string; message: string } | null;
+}
+
+export interface EvalRunDetail {
+  id: string;
+  name: string;
+  target: EvalTarget;
+  createdAt: string;
+  dataset: { id: string; name: string };
+  evalConfig: { id: string; name: string; scorers: ScorerSpecDto[] };
+  subject: Record<string, unknown>;
+  status: RunStatus;
+  aggregate: Record<string, number> | null;
+  results: EvalCaseResultDto[];
+  pending: boolean;
+}
+
+export interface EvalRunSummary {
+  id: string;
+  name: string;
+  datasetName: string;
+  target: EvalTarget;
+  createdAt: string;
+  status: RunStatus;
+  aggregate: Record<string, number> | null;
+  total: number;
+  succeeded: number;
+  failed: number;
+  pending: number;
+}

@@ -23,6 +23,28 @@ export {
   type RetrievalRunSpec,
 } from "./rag";
 
+export {
+  evalTargetSchema,
+  datasetSpecSchema,
+  retrievalCaseSchema,
+  generationCaseSchema,
+  caseSchemaForTarget,
+  addCasesSpecSchema,
+  retrievalScorerSpecSchema,
+  evalConfigSpecSchema,
+  retrievalSubjectSchema,
+  evalRunSpecSchema,
+  type EvalTarget,
+  type DatasetSpec,
+  type RetrievalCase,
+  type GenerationCase,
+  type AddCasesSpec,
+  type RetrievalScorerSpec,
+  type EvalConfigSpec,
+  type RetrievalSubject,
+  type EvalRunSpec,
+} from "./eval";
+
 export type {
   ProviderKind,
   ModelSummary,
@@ -42,4 +64,13 @@ export type {
   RetrievalResultDetail,
   RetrievalRunDetail,
   RetrievalRunSummary,
+  ScorerSpecDto,
+  DatasetSummary,
+  DatasetCaseDto,
+  DatasetDetail,
+  EvalConfigSummary,
+  EvalScoreDto,
+  EvalCaseResultDto,
+  EvalRunDetail,
+  EvalRunSummary,
 } from "./dto";
