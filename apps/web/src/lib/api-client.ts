@@ -8,8 +8,16 @@ import type {
   ChunkDetail,
   ChunkingConfigSpec,
   ChunkingConfigSummary,
+  DatasetDetail,
+  DatasetSpec,
+  DatasetSummary,
   DocumentSummary,
   EmbeddingModelSummary,
+  EvalConfigSpec,
+  EvalConfigSummary,
+  EvalRunDetail,
+  EvalRunSpec,
+  EvalRunSummary,
   ExperimentDetail,
   ExperimentSpec,
   ExperimentSummary,
@@ -45,6 +53,19 @@ export type {
   RetrievalRunDetail,
   RetrievalRunSpec,
   RetrievalRunSummary,
+  EvalTarget,
+  ScorerSpecDto,
+  DatasetSummary,
+  DatasetCaseDto,
+  DatasetDetail,
+  DatasetSpec,
+  EvalConfigSummary,
+  EvalConfigSpec,
+  EvalScoreDto,
+  EvalCaseResultDto,
+  EvalRunDetail,
+  EvalRunSpec,
+  EvalRunSummary,
 } from "@melai/shared";
 export type { RunStatus } from "@melai/shared";
 
@@ -109,6 +130,7 @@ export const api = {
   createDocument: (input: { name: string; content: string }) =>
     request<DocumentSummary>("/documents", { method: "POST", body: JSON.stringify(input) }),
 
+  chunkingConfigs: () => request<{ chunkingConfigs: ChunkingConfigSummary[] }>("/chunking-configs"),
   createChunkingConfig: (spec: ChunkingConfigSpec) =>
     request<ChunkingConfigSummary>("/chunking-configs", {
       method: "POST",
@@ -127,6 +149,8 @@ export const api = {
       body: JSON.stringify({ embeddingModelId }),
     }),
 
+  retrievalConfigs: () =>
+    request<{ retrievalConfigs: RetrievalConfigSummary[] }>("/retrieval-configs"),
   createRetrievalConfig: (spec: RetrievalConfigSpec) =>
     request<RetrievalConfigSummary>("/retrieval-configs", {
       method: "POST",
@@ -137,4 +161,24 @@ export const api = {
   retrievalRun: (id: string) => request<RetrievalRunDetail>(`/retrieval-runs/${id}`),
   startRetrievalRun: (spec: RetrievalRunSpec) =>
     request<RetrievalRunDetail>("/retrieval-runs", { method: "POST", body: JSON.stringify(spec) }),
+
+  // --- Evaluation Lab ---
+  datasets: () => request<{ datasets: DatasetSummary[] }>("/datasets"),
+  dataset: (id: string) => request<DatasetDetail>(`/datasets/${id}`),
+  createDataset: (spec: DatasetSpec) =>
+    request<DatasetSummary>("/datasets", { method: "POST", body: JSON.stringify(spec) }),
+  addCases: (datasetId: string, cases: unknown[]) =>
+    request<DatasetDetail>(`/datasets/${datasetId}/cases`, {
+      method: "POST",
+      body: JSON.stringify({ cases }),
+    }),
+
+  evalConfigs: () => request<{ evalConfigs: EvalConfigSummary[] }>("/eval-configs"),
+  createEvalConfig: (spec: EvalConfigSpec) =>
+    request<EvalConfigSummary>("/eval-configs", { method: "POST", body: JSON.stringify(spec) }),
+
+  evalRuns: () => request<{ evalRuns: EvalRunSummary[] }>("/eval-runs"),
+  evalRun: (id: string) => request<EvalRunDetail>(`/eval-runs/${id}`),
+  startEvalRun: (spec: EvalRunSpec) =>
+    request<EvalRunDetail>("/eval-runs", { method: "POST", body: JSON.stringify(spec) }),
 };

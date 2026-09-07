@@ -29,7 +29,12 @@ const LABS = [
     body: "Chunk, embed, and compare BM25, vector and hybrid retrieval side by side.",
     ready: true,
   },
-  { href: "#", title: "Evaluation Lab", body: "Score pipelines against datasets.", ready: false },
+  {
+    href: "/eval",
+    title: "Evaluation Lab",
+    body: "Score a retrieval config against a dataset — recall@k, MRR, nDCG — not vibes.",
+    ready: true,
+  },
 ];
 
 type Snapshot =

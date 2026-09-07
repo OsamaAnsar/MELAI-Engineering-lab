@@ -14,8 +14,10 @@ import {
   embedChunks,
   getDocument,
   getRetrievalRun,
+  listChunkingConfigs,
   listDocuments,
   listEmbeddingModels,
+  listRetrievalConfigs,
   listRetrievalRuns,
   runRetrievalRun,
   type RagDeps,
@@ -76,6 +78,14 @@ export function ragRoutes(deps: RagDeps): FastifyPluginAsync {
         throw err;
       }
     });
+
+    app.get("/chunking-configs", async () => ({
+      chunkingConfigs: await listChunkingConfigs(deps),
+    }));
+
+    app.get("/retrieval-configs", async () => ({
+      retrievalConfigs: await listRetrievalConfigs(deps),
+    }));
 
     app.get("/embedding-models", async () => ({
       embeddingModels: await listEmbeddingModels(deps),

@@ -4,10 +4,11 @@ const LIVE = [
   { href: "/", label: "Dashboard" },
   { href: "/experiments", label: "Experiments" },
   { href: "/rag", label: "RAG Lab" },
+  { href: "/eval", label: "Evals" },
   { href: "/models", label: "Models" },
 ];
 
-const SOON = ["Agents", "Prompts", "Evals", "Traces"];
+const SOON = ["Agents", "Prompts", "Traces"];
 
 export function Nav() {
   return (

@@ -97,6 +97,12 @@ export async function createChunkingConfig(
   return config;
 }
 
+export async function listChunkingConfigs(
+  deps: Pick<RagDeps, "db">,
+): Promise<ChunkingConfigSummary[]> {
+  return deps.db.query.chunkingConfigs.findMany({ orderBy: desc(chunkingConfigs.createdAt) });
+}
+
 /**
  * Runs a chunking config over a document, persisting the result. Idempotent:
  * if this (document, config) pair was already chunked, returns the cached rows.
@@ -246,6 +252,12 @@ export async function createRetrievalConfig(
     .returning();
   if (!config) throw new Error("Failed to create retrieval config");
   return config;
+}
+
+export async function listRetrievalConfigs(
+  deps: Pick<RagDeps, "db">,
+): Promise<RetrievalConfigSummary[]> {
+  return deps.db.query.retrievalConfigs.findMany({ orderBy: desc(retrievalConfigs.createdAt) });
 }
 
 // --- retrieval runs ---
