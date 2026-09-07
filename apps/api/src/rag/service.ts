@@ -343,6 +343,102 @@ function buildHybridCandidates(
   }));
 }
 
+/**
+ * Runs one retrieval config against one query, over a document's chunk set for
+ * a chunking config. Pure of any run-row bookkeeping — `executeRetrieval` wraps
+ * this for the RAG Lab, the Evaluation Lab calls it per dataset case.
+ */
+export async function retrieveForQuery(
+  deps: Pick<RagDeps, "db" | "embeddingRegistry">,
+  args: {
+    retrievalConfigId: string;
+    documentId: string;
+    chunkingConfigId: string;
+    query: string;
+    topK: number;
+  },
+): Promise<RetrievalCandidate[]> {
+  const config = await deps.db.query.retrievalConfigs.findFirst({
+    where: eq(retrievalConfigs.id, args.retrievalConfigId),
+  });
+  if (!config) throw new NotFoundError(`Retrieval config ${args.retrievalConfigId} not found`);
+
+  const chunkRows = await deps.db.query.chunks.findMany({
+    where: and(
+      eq(chunks.documentId, args.documentId),
+      eq(chunks.chunkingConfigId, args.chunkingConfigId),
+    ),
+    orderBy: asc(chunks.index),
+  });
+
+  if (config.method === "bm25") {
+    const { k1, b } = bm25ParamsSchema.parse(config.params);
+    const index = new Bm25Index(
+      chunkRows.map((c) => ({ id: c.id, content: c.content })),
+      { k1, b },
+    );
+    return index
+      .search(args.query, args.topK)
+      .map((m, i) => ({ chunkId: m.id, score: m.score, bm25Rank: i + 1, bm25Score: m.score }));
+  }
+
+  const { embeddingModelId, rrfK } =
+    config.method === "vector"
+      ? { ...vectorParamsSchema.parse(config.params), rrfK: undefined }
+      : hybridRrfParamsSchema.parse(config.params);
+
+  const embeddingModel = await deps.db.query.embeddingModels.findFirst({
+    where: eq(embeddingModels.id, embeddingModelId),
+    with: { provider: true },
+  });
+  if (!embeddingModel) throw new NotFoundError(`Embedding model ${embeddingModelId} not found`);
+
+  const provider = deps.embeddingRegistry.get(embeddingModel.provider.name);
+  if (!provider) {
+    throw new BadRequestError(
+      `No credentials configured for embedding provider "${embeddingModel.provider.name}"`,
+    );
+  }
+
+  const embeddingRows = await deps.db.query.embeddings.findMany({
+    where: and(
+      inArray(
+        embeddings.chunkId,
+        chunkRows.map((c) => c.id),
+      ),
+      eq(embeddings.embeddingModelId, embeddingModelId),
+    ),
+  });
+  if (embeddingRows.length < chunkRows.length) {
+    throw new BadRequestError(
+      "Not every chunk is embedded with this model yet — embed the chunking config first",
+    );
+  }
+  const vectorByChunkId = new Map(embeddingRows.map((e) => [e.chunkId, e.vector]));
+
+  const { vectors: queryVectors } = await provider.embed({
+    model: embeddingModel.name,
+    texts: [args.query],
+  });
+  const queryVector = queryVectors[0]!;
+  const candidates = chunkRows.map((c) => ({ id: c.id, vector: vectorByChunkId.get(c.id)! }));
+
+  if (config.method === "vector") {
+    return vectorSearch(queryVector, candidates, args.topK).map((m, i) => ({
+      chunkId: m.id,
+      score: m.score,
+      vectorRank: i + 1,
+      vectorScore: m.score,
+    }));
+  }
+
+  const bm25Matches = new Bm25Index(
+    chunkRows.map((c) => ({ id: c.id, content: c.content })),
+  ).search(args.query, chunkRows.length);
+  const vectorMatches = vectorSearch(queryVector, candidates, chunkRows.length);
+  return buildHybridCandidates(bm25Matches, vectorMatches, rrfK ?? 60, args.topK);
+}
+
 async function executeRetrieval(
   deps: Pick<RagDeps, "db" | "embeddingRegistry" | "events">,
   plan: RetrievalRunPlan,
@@ -360,88 +456,13 @@ async function executeRetrieval(
   const start = performance.now();
 
   try {
-    const config = await deps.db.query.retrievalConfigs.findFirst({
-      where: eq(retrievalConfigs.id, retrievalConfigId),
+    const results = await retrieveForQuery(deps, {
+      retrievalConfigId,
+      documentId: plan.documentId,
+      chunkingConfigId: plan.chunkingConfigId,
+      query: plan.query,
+      topK: plan.topK,
     });
-    if (!config) throw new NotFoundError(`Retrieval config ${retrievalConfigId} not found`);
-
-    const chunkRows = await deps.db.query.chunks.findMany({
-      where: and(
-        eq(chunks.documentId, plan.documentId),
-        eq(chunks.chunkingConfigId, plan.chunkingConfigId),
-      ),
-      orderBy: asc(chunks.index),
-    });
-
-    let results: RetrievalCandidate[];
-
-    if (config.method === "bm25") {
-      const { k1, b } = bm25ParamsSchema.parse(config.params);
-      const index = new Bm25Index(
-        chunkRows.map((c) => ({ id: c.id, content: c.content })),
-        { k1, b },
-      );
-      results = index
-        .search(plan.query, plan.topK)
-        .map((m, i) => ({ chunkId: m.id, score: m.score, bm25Rank: i + 1, bm25Score: m.score }));
-    } else {
-      const { embeddingModelId, rrfK } =
-        config.method === "vector"
-          ? { ...vectorParamsSchema.parse(config.params), rrfK: undefined }
-          : hybridRrfParamsSchema.parse(config.params);
-
-      const embeddingModel = await deps.db.query.embeddingModels.findFirst({
-        where: eq(embeddingModels.id, embeddingModelId),
-        with: { provider: true },
-      });
-      if (!embeddingModel) throw new NotFoundError(`Embedding model ${embeddingModelId} not found`);
-
-      const provider = deps.embeddingRegistry.get(embeddingModel.provider.name);
-      if (!provider) {
-        throw new BadRequestError(
-          `No credentials configured for embedding provider "${embeddingModel.provider.name}"`,
-        );
-      }
-
-      const embeddingRows = await deps.db.query.embeddings.findMany({
-        where: and(
-          inArray(
-            embeddings.chunkId,
-            chunkRows.map((c) => c.id),
-          ),
-          eq(embeddings.embeddingModelId, embeddingModelId),
-        ),
-      });
-      if (embeddingRows.length < chunkRows.length) {
-        throw new BadRequestError(
-          "Not every chunk is embedded with this model yet — embed the chunking config first",
-        );
-      }
-      const vectorByChunkId = new Map(embeddingRows.map((e) => [e.chunkId, e.vector]));
-
-      const { vectors: queryVectors } = await provider.embed({
-        model: embeddingModel.name,
-        texts: [plan.query],
-      });
-      const queryVector = queryVectors[0]!;
-
-      const candidates = chunkRows.map((c) => ({ id: c.id, vector: vectorByChunkId.get(c.id)! }));
-
-      if (config.method === "vector") {
-        results = vectorSearch(queryVector, candidates, plan.topK).map((m, i) => ({
-          chunkId: m.id,
-          score: m.score,
-          vectorRank: i + 1,
-          vectorScore: m.score,
-        }));
-      } else {
-        const bm25Matches = new Bm25Index(
-          chunkRows.map((c) => ({ id: c.id, content: c.content })),
-        ).search(plan.query, chunkRows.length);
-        const vectorMatches = vectorSearch(queryVector, candidates, chunkRows.length);
-        results = buildHybridCandidates(bm25Matches, vectorMatches, rrfK ?? 60, plan.topK);
-      }
-    }
 
     await deps.db
       .update(retrievalRunResults)
