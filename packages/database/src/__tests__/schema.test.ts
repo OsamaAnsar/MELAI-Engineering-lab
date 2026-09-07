@@ -3,9 +3,14 @@ import { eq } from "drizzle-orm";
 import {
   chunkingConfigs,
   chunks,
+  datasetCases,
+  datasets,
   documents,
   embeddingModels,
   embeddings,
+  evalCaseResults,
+  evalConfigs,
+  evalRuns,
   experimentRuns,
   experiments,
   models,
@@ -351,5 +356,189 @@ describe("RAG schema round-trip (PGlite)", () => {
       where: eq(retrievalRunResults.retrievalRunId, run!.id),
     });
     expect(remaining).toHaveLength(0);
+  });
+});
+
+describe("Evaluation schema round-trip (PGlite)", () => {
+  test("persists an eval run and case result across the full FK chain", async () => {
+    const { db } = handle;
+
+    const [dataset] = await db
+      .insert(datasets)
+      .values({
+        name: "support-policy-retrieval",
+        target: "retrieval",
+        description: "example",
+      })
+      .returning();
+
+    const [datasetCase] = await db
+      .insert(datasetCases)
+      .values({
+        datasetId: dataset!.id,
+        label: "refund timing",
+        input: { query: "How long do refunds take?" },
+        expected: { relevantText: ["within 14 business days"] },
+      })
+      .returning();
+
+    const [evalConfig] = await db
+      .insert(evalConfigs)
+      .values({
+        name: "recall + mrr",
+        target: "retrieval",
+        scorers: [{ kind: "recall_at_k", params: { k: 5 } }, { kind: "mrr" }],
+      })
+      .returning();
+
+    const [document] = await db
+      .insert(documents)
+      .values({ name: "policy.md", content: "Refunds are processed within 14 business days." })
+      .returning();
+    const [chunkingConfig] = await db
+      .insert(chunkingConfigs)
+      .values({ name: "fixed-256", strategy: "fixed" })
+      .returning();
+    const [retrievalConfig] = await db
+      .insert(retrievalConfigs)
+      .values({ name: "bm25", method: "bm25" })
+      .returning();
+
+    const [evalRun] = await db
+      .insert(evalRuns)
+      .values({
+        name: "bm25 baseline",
+        datasetId: dataset!.id,
+        evalConfigId: evalConfig!.id,
+        target: "retrieval",
+        subject: {
+          kind: "retrieval",
+          documentId: document!.id,
+          chunkingConfigId: chunkingConfig!.id,
+          retrievalConfigId: retrievalConfig!.id,
+          topK: 5,
+        },
+        status: "success",
+        aggregate: { recall_at_k: 0.8, mrr: 0.65 },
+        latencyMs: 42,
+        startedAt: new Date(),
+        finishedAt: new Date(),
+      })
+      .returning();
+
+    const [caseResult] = await db
+      .insert(evalCaseResults)
+      .values({
+        evalRunId: evalRun!.id,
+        datasetCaseId: datasetCase!.id,
+        status: "success",
+        output: { candidates: [{ chunkId: "c1", score: 0.9 }] },
+        scores: {
+          recall_at_k: { value: 1, pass: true },
+          mrr: { value: 1 },
+        },
+        latencyMs: 8,
+      })
+      .returning();
+
+    expect(caseResult!.status).toBe("success");
+
+    const fetched = await db.query.evalRuns.findFirst({
+      where: eq(evalRuns.id, evalRun!.id),
+      with: { caseResults: true, dataset: true, evalConfig: true },
+    });
+    expect(fetched?.aggregate?.recall_at_k).toBe(0.8);
+    expect(fetched?.subject.kind).toBe("retrieval");
+    expect(fetched?.dataset.name).toBe("support-policy-retrieval");
+    expect(fetched?.caseResults[0]?.scores?.recall_at_k?.value).toBe(1);
+  });
+
+  test("cascades case and case-result deletion when the dataset is removed", async () => {
+    const { db } = handle;
+    const [dataset] = await db
+      .insert(datasets)
+      .values({ name: "cascade-eval", target: "retrieval" })
+      .returning();
+    const [datasetCase] = await db
+      .insert(datasetCases)
+      .values({ datasetId: dataset!.id, input: { query: "x" } })
+      .returning();
+    const [evalConfig] = await db
+      .insert(evalConfigs)
+      .values({ name: "c", target: "retrieval", scorers: [{ kind: "mrr" }] })
+      .returning();
+    const [document] = await db
+      .insert(documents)
+      .values({ name: "c.md", content: "x" })
+      .returning();
+    const [chunkingConfig] = await db
+      .insert(chunkingConfigs)
+      .values({ name: "c", strategy: "fixed" })
+      .returning();
+    const [retrievalConfig] = await db
+      .insert(retrievalConfigs)
+      .values({ name: "c", method: "bm25" })
+      .returning();
+    const [evalRun] = await db
+      .insert(evalRuns)
+      .values({
+        name: "r",
+        datasetId: dataset!.id,
+        evalConfigId: evalConfig!.id,
+        target: "retrieval",
+        subject: {
+          kind: "retrieval",
+          documentId: document!.id,
+          chunkingConfigId: chunkingConfig!.id,
+          retrievalConfigId: retrievalConfig!.id,
+          topK: 5,
+        },
+      })
+      .returning();
+    await db
+      .insert(evalCaseResults)
+      .values({ evalRunId: evalRun!.id, datasetCaseId: datasetCase!.id });
+
+    await db.delete(datasets).where(eq(datasets.id, dataset!.id));
+
+    const remainingCases = await db.query.datasetCases.findMany({
+      where: eq(datasetCases.datasetId, dataset!.id),
+    });
+    expect(remainingCases).toHaveLength(0);
+
+    const remainingResults = await db.query.evalCaseResults.findMany({
+      where: eq(evalCaseResults.evalRunId, evalRun!.id),
+    });
+    expect(remainingResults).toHaveLength(0);
+  });
+
+  test("nulls the judge model reference when the model is deleted", async () => {
+    const { db } = handle;
+    const [provider] = await db
+      .insert(providers)
+      .values({ name: "judge-provider", kind: "cloud" })
+      .returning();
+    const [model] = await db
+      .insert(models)
+      .values({ providerId: provider!.id, name: "judge-model", displayName: "Judge" })
+      .returning();
+    const [evalConfig] = await db
+      .insert(evalConfigs)
+      .values({
+        name: "judged",
+        target: "generation",
+        scorers: [{ kind: "llm_judge" }],
+        judgeModelId: model!.id,
+        judgeRubric: "Score 1-5 for factual accuracy.",
+      })
+      .returning();
+
+    await db.delete(models).where(eq(models.id, model!.id));
+
+    const fetched = await db.query.evalConfigs.findFirst({
+      where: eq(evalConfigs.id, evalConfig!.id),
+    });
+    expect(fetched?.judgeModelId).toBeNull();
+    expect(fetched?.judgeRubric).toBe("Score 1-5 for factual accuracy.");
   });
 });

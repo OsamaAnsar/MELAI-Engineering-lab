@@ -15,6 +15,13 @@
       "when": 1788536232301,
       "tag": "0001_kind_angel",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788811368723,
+      "tag": "0002_abandoned_wildside",
+      "breakpoints": true
     }
   ]
 }

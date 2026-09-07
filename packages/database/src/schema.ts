@@ -18,6 +18,7 @@ export const providerKind = pgEnum("provider_kind", ["cloud", "local"]);
 export const runStatus = pgEnum("run_status", ["pending", "running", "success", "error"]);
 export const chunkingStrategy = pgEnum("chunking_strategy", ["fixed", "sentence"]);
 export const retrievalMethod = pgEnum("retrieval_method", ["bm25", "vector", "hybrid_rrf"]);
+export const evalTarget = pgEnum("eval_target", ["retrieval", "generation"]);
 
 /**
  * Fixed width for the `embeddings.vector` column. Ollama's `nomic-embed-text`
@@ -269,6 +270,135 @@ export const retrievalRunResults = pgTable(
   (t) => [index("retrieval_run_results_run_id_idx").on(t.retrievalRunId)],
 );
 
+/**
+ * One scorer to apply to every case in an evaluation. `kind` is validated
+ * against a discriminated union in `@melai/shared` (`scorerSpecSchema`); the DB
+ * keeps it loose the same way `chunking_configs.params` is loose.
+ *
+ * Retrieval kinds: `recall_at_k`, `precision_at_k`, `mrr`, `ndcg`, `hit_rate`
+ *   (params: `{ k?: number }`).
+ * Generation kinds (M3b): `exact_match`, `contains`, `regex`, `json_valid`,
+ *   `embedding_similarity` (`{ embeddingModelId, threshold }`),
+ *   `llm_judge` (`{ passScore }`).
+ */
+export interface ScorerSpec {
+  kind: string;
+  params?: Record<string, unknown>;
+}
+
+/** One scorer's output for one case. `value` is always numeric so it aggregates. */
+export interface ScoreValue {
+  value: number;
+  pass?: boolean;
+  reason?: string;
+}
+
+/**
+ * What an eval run is measuring. A reproducible snapshot of the M1/M2 config
+ * being scored — stored as jsonb (no FKs) like `experiment_runs.request`.
+ */
+export type EvalSubject =
+  | {
+      kind: "retrieval";
+      documentId: string;
+      chunkingConfigId: string;
+      retrievalConfigId: string;
+      topK: number;
+    }
+  | {
+      kind: "generation";
+      promptVersionId: string;
+      modelId: string;
+      temperature: number;
+      maxOutputTokens: number;
+    };
+
+/** A named set of test cases scored the same way. */
+export const datasets = pgTable("datasets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  target: evalTarget("target").notNull(),
+  description: text("description"),
+  createdAt,
+});
+
+/**
+ * One test case. `input`/`expected` shapes depend on the dataset's target:
+ *   retrieval  → input `{ query }`, expected `{ relevantText: string[] }`
+ *   generation → input `{ variables }`, expected `{ reference?, mustContain?, mustMatch? }`
+ */
+export const datasetCases = pgTable(
+  "dataset_cases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    datasetId: uuid("dataset_id")
+      .notNull()
+      .references(() => datasets.id, { onDelete: "cascade" }),
+    label: text("label"),
+    input: jsonb("input").$type<Record<string, unknown>>().notNull(),
+    expected: jsonb("expected").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt,
+  },
+  (t) => [index("dataset_cases_dataset_id_idx").on(t.datasetId)],
+);
+
+/** A named scoring setup: which scorers to run, plus an optional judge model. */
+export const evalConfigs = pgTable("eval_configs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  target: evalTarget("target").notNull(),
+  scorers: jsonb("scorers").$type<ScorerSpec[]>().notNull().default([]),
+  judgeModelId: uuid("judge_model_id").references(() => models.id, { onDelete: "set null" }),
+  judgeRubric: text("judge_rubric"),
+  createdAt,
+});
+
+/** One evaluation execution: a (dataset, evalConfig, subject) triple. */
+export const evalRuns = pgTable(
+  "eval_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    datasetId: uuid("dataset_id")
+      .notNull()
+      .references(() => datasets.id, { onDelete: "cascade" }),
+    evalConfigId: uuid("eval_config_id")
+      .notNull()
+      .references(() => evalConfigs.id),
+    target: evalTarget("target").notNull(),
+    subject: jsonb("subject").$type<EvalSubject>().notNull(),
+    status: runStatus("status").notNull().default("pending"),
+    aggregate: jsonb("aggregate").$type<Record<string, number>>(),
+    latencyMs: integer("latency_ms"),
+    error: jsonb("error").$type<RunError>(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    createdAt,
+  },
+  (t) => [index("eval_runs_dataset_id_idx").on(t.datasetId)],
+);
+
+/** One (evalRun, case) result: the subject output plus every scorer's value. */
+export const evalCaseResults = pgTable(
+  "eval_case_results",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    evalRunId: uuid("eval_run_id")
+      .notNull()
+      .references(() => evalRuns.id, { onDelete: "cascade" }),
+    datasetCaseId: uuid("dataset_case_id")
+      .notNull()
+      .references(() => datasetCases.id, { onDelete: "cascade" }),
+    status: runStatus("status").notNull().default("pending"),
+    output: jsonb("output").$type<Record<string, unknown>>(),
+    scores: jsonb("scores").$type<Record<string, ScoreValue>>(),
+    latencyMs: integer("latency_ms"),
+    error: jsonb("error").$type<RunError>(),
+    createdAt,
+  },
+  (t) => [index("eval_case_results_eval_run_id_idx").on(t.evalRunId)],
+);
+
 export const providersRelations = relations(providers, ({ many }) => ({
   models: many(models),
   embeddingModels: many(embeddingModels),
@@ -360,6 +490,38 @@ export const retrievalRunResultsRelations = relations(retrievalRunResults, ({ on
   }),
 }));
 
+export const datasetsRelations = relations(datasets, ({ many }) => ({
+  cases: many(datasetCases),
+  evalRuns: many(evalRuns),
+}));
+
+export const datasetCasesRelations = relations(datasetCases, ({ one, many }) => ({
+  dataset: one(datasets, { fields: [datasetCases.datasetId], references: [datasets.id] }),
+  caseResults: many(evalCaseResults),
+}));
+
+export const evalConfigsRelations = relations(evalConfigs, ({ one, many }) => ({
+  judgeModel: one(models, { fields: [evalConfigs.judgeModelId], references: [models.id] }),
+  evalRuns: many(evalRuns),
+}));
+
+export const evalRunsRelations = relations(evalRuns, ({ one, many }) => ({
+  dataset: one(datasets, { fields: [evalRuns.datasetId], references: [datasets.id] }),
+  evalConfig: one(evalConfigs, {
+    fields: [evalRuns.evalConfigId],
+    references: [evalConfigs.id],
+  }),
+  caseResults: many(evalCaseResults),
+}));
+
+export const evalCaseResultsRelations = relations(evalCaseResults, ({ one }) => ({
+  evalRun: one(evalRuns, { fields: [evalCaseResults.evalRunId], references: [evalRuns.id] }),
+  datasetCase: one(datasetCases, {
+    fields: [evalCaseResults.datasetCaseId],
+    references: [datasetCases.id],
+  }),
+}));
+
 export const schema = {
   providers,
   models,
@@ -375,6 +537,11 @@ export const schema = {
   retrievalConfigs,
   retrievalRuns,
   retrievalRunResults,
+  datasets,
+  datasetCases,
+  evalConfigs,
+  evalRuns,
+  evalCaseResults,
   providersRelations,
   modelsRelations,
   promptsRelations,
@@ -389,4 +556,9 @@ export const schema = {
   retrievalConfigsRelations,
   retrievalRunsRelations,
   retrievalRunResultsRelations,
+  datasetsRelations,
+  datasetCasesRelations,
+  evalConfigsRelations,
+  evalRunsRelations,
+  evalCaseResultsRelations,
 };

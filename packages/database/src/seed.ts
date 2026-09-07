@@ -1,8 +1,8 @@
 import { createDatabase } from "./client.js";
 import { getDatabaseUrl } from "./env.js";
 import { createPgliteDatabase } from "./pglite.js";
-import { embeddingModels, models, providers } from "./schema.js";
-import { seedProviders } from "./seed-data.js";
+import { datasetCases, datasets, documents, embeddingModels, models, providers } from "./schema.js";
+import { seedDatasets, seedDocuments, seedProviders } from "./seed-data.js";
 
 async function seed(): Promise<void> {
   const { db, close } =
@@ -41,6 +41,30 @@ async function seed(): Promise<void> {
       console.log(
         `seeded ${p.name} (${p.models.length} model(s), ${(p.embeddingModels ?? []).length} embedding model(s))`,
       );
+    }
+
+    for (const d of seedDocuments) {
+      const existing = await db.query.documents.findFirst({
+        where: (r, { eq }) => eq(r.name, d.name),
+      });
+      if (!existing) {
+        await db.insert(documents).values({ name: d.name, content: d.content });
+        console.log(`seeded document "${d.name}"`);
+      }
+    }
+
+    for (const ds of seedDatasets) {
+      const existing = await db.query.datasets.findFirst({
+        where: (r, { eq }) => eq(r.name, ds.name),
+      });
+      if (existing) continue;
+      const [row] = await db
+        .insert(datasets)
+        .values({ name: ds.name, target: ds.target, description: ds.description })
+        .returning();
+      if (!row) throw new Error(`Failed to insert dataset ${ds.name}`);
+      await db.insert(datasetCases).values(ds.cases.map((c) => ({ datasetId: row.id, ...c })));
+      console.log(`seeded dataset "${ds.name}" (${ds.cases.length} cases)`);
     }
   } finally {
     await close();

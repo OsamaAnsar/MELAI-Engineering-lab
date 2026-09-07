@@ -31,6 +31,83 @@ export interface SeedProvider {
   embeddingModels?: SeedEmbeddingModel[];
 }
 
+export interface SeedDocument {
+  name: string;
+  content: string;
+}
+
+export interface SeedDatasetCase {
+  label: string;
+  input: Record<string, unknown>;
+  expected: Record<string, unknown>;
+}
+
+export interface SeedDataset {
+  name: string;
+  target: "retrieval" | "generation";
+  description: string;
+  cases: SeedDatasetCase[];
+}
+
+/**
+ * A small example corpus so the Evaluation Lab has something to run against
+ * out of the box. Paragraphs are deliberately distinct so retrieval has a
+ * clear right answer per query.
+ */
+export const seedDocuments: SeedDocument[] = [
+  {
+    name: "MELAI Sample — Support Policy",
+    content: [
+      "Refunds are processed within 14 business days of an approved request. The amount is returned to the original payment method.",
+      "Standard shipping takes 5 to 7 business days. Expedited shipping arrives in 2 business days for an additional fee.",
+      "Hardware is covered by a 12-month limited warranty against manufacturing defects. Accidental damage is not covered.",
+      "To delete your account, open Settings, choose Privacy, and select Delete account. Deletion is permanent after a 30-day grace period.",
+      "You can export your data as a ZIP archive of JSON files from Settings, Privacy, Export data. The download link is valid for 24 hours.",
+      "Support is available by email at help@example.com and by live chat on weekdays from 9am to 6pm UTC.",
+    ].join("\n\n"),
+  },
+];
+
+/**
+ * A retrieval evaluation dataset over the sample document above. `relevantText`
+ * is a list of substrings; a retrieved chunk counts as relevant when it
+ * contains any of them (matching is done at eval time, not here).
+ */
+export const seedDatasets: SeedDataset[] = [
+  {
+    name: "Support Policy — retrieval eval",
+    target: "retrieval",
+    description: "Five factual questions against the MELAI sample support policy.",
+    cases: [
+      {
+        label: "refund timing",
+        input: { query: "How long do refunds take?" },
+        expected: { relevantText: ["within 14 business days"] },
+      },
+      {
+        label: "expedited shipping",
+        input: { query: "When does expedited shipping arrive?" },
+        expected: { relevantText: ["2 business days for an additional fee"] },
+      },
+      {
+        label: "warranty exclusion",
+        input: { query: "Is accidental damage covered by the warranty?" },
+        expected: { relevantText: ["Accidental damage is not covered"] },
+      },
+      {
+        label: "account deletion",
+        input: { query: "How do I permanently delete my account?" },
+        expected: { relevantText: ["Delete account", "30-day grace period"] },
+      },
+      {
+        label: "data export format",
+        input: { query: "What format is exported data in?" },
+        expected: { relevantText: ["ZIP archive of JSON files"] },
+      },
+    ],
+  },
+];
+
 export const seedProviders: SeedProvider[] = [
   {
     name: "anthropic",
